@@ -1,0 +1,321 @@
+Distributed system 101 in golang
+
+Huy Do
+Software Engineer, Observability Team / LINE Corp
+@dxhuy
+
+* Today goal
+- A very brief introduction of some Distributed System (DistSys) concept
+- In Golang!!
+
+* About Observability Team
+- Recently hot keyword
+
+.image ./picture/obs1.png
+.image ./picture/obs3.png
+
+- Recently hot services: Datadog, Stackdriver, 
+
+* What observability means
+.image ./picture/obs2.png
+
+
+* What observability means
+.image /picture/obs5.jpeg
+
+* What we're doing
+- Large scale log infrastructure (for alert) (~ 1 millions log per min)
+- Large scale metrics infrastructure (~ 40 millions metrics per min)
+- Large scale tracing infrastructure (~ 1 millions span per min)
+
+* Some critical parts already written in golang!
+- Metrics query aggregator
+- Metric agent (https://www.slideshare.net/dxhuy88/gocon-autumn-story-of-our-own-monitoring-agent-in-golang)
+- Currently write our own on-memory metric storage using golang
+
+
+* Distributed system
+
+.image ./picture/dist1.png
+
+なにそれ
+
+* Prerequisite
+
+We ALL want to build large SCALE system
+
+- You build a web service
+- Your service get hit
+- You become millionaire
+- You server running Ruby On Rails in single machine
+- Your service get down
+- You become homeless
+
+
+* Large SCALE system == Distributed system
+
+- Many machine 
+- Many network
+- Many engineers
+- Network could broken
+- Machine could broken
+- Engineers could broken
+
+* Distributed system
+
+.image ./picture/dist2.jpg
+
+Distributed programming is the art of solving the same problem that you can solve on a single computer using multiple computers.
+
+* Falacies of Distributed system
+
+- The network is reliable.
+- Latency is zero.
+- Bandwidth is infinite.
+- The network is secure.
+- Topology doesn't change.
+- There is one administrator.
+- Transport cost is zero.
+- The network is homogeneous.
+.image ./picture/problem1.jpeg
+
+* Distributed algorithm
+
+Algorithms deal with wrong system correctly
+
+To make it Strong Consistency?
+To make it High Availability?
+To make it Partition Tolerance?
+
+.image ./picture/ha.jpg
+
+.caption High Availability mostly preferred 
+
+* CAP Theorem
+
+We can't get it all 
+
+.image ./picture/cap.jpeg
+
+* Distributed algorithms
+
+Too many https://en.wikipedia.org/wiki/Category:Distributed_algorithms
+
+- Paxos, Raft, ZAB
+- 2PC (2 phase commit)
+- Lamport ordering
+- Dijkstra-Scholten algorithm
+- Snapshot algorithm 
+- Bully algorithm
+- And many more...
+
+* Lessie Lamport
+.image ./picture/lamport.jpg 500 350
+
+* Each algorithm solve different problem
+
+- Most algorithm deal with high abstract, theoritical problem instead of detail concrete problem
+
+Most 2 notable problems:
+
+- *Concensus* *problem*
+
+Several computers (or nodes) achieve consensus if they all agree on some value.
+
+- *Time* *and* *order* *problem*
+
+Does time progress at the same rate everywhere?
+
+* Some summary
+
+- Distributed system == Scalable system
+- We ALL want to make scale system
+- Any thing in distributed system could go wrong
+- To prevent it from go wrong, we need some techniques (algorithms)
+- Distributed algorithm is hard, because it solve theoritically, abstract complex problem
+
+* That's enough theory!
+
+.image ./picture/enough.jpeg 500 500
+
+* But today we're not gonna talk deeper about those problems!
+
+- Let's focus on few small, concrete problem instead
+
+.image ./picture/focus.jpg 400 300
+
+* High Availability
+
+Mostly understand as UP time
+.image ./picture/ha.jpg
+
+* When a machine is NOT UP:
+
+- Network broken (lost communication)
+- Disk broken (lost data)
+- Memory broken (lost data)
+- Any many more..
+
+
+* How to prevent
+
+- Node availability awareness (discovery problem)
+- Data replication (mostly for database system)
+
+* Introduce two algorithms
+- *Gossip* (for node membership sync)
+- *Raft* (for data replication) (note that Raft could resolve membership problem too but with higher cost)
+
+* Gossip
+
+.image ./picture/gossip.png 500 450
+
+* Gossip
+
+Idea: Node ping *some* other nodes smartly, and sync its data to other nodes in interval
+
+Notable project: 
+.link https://github.com/hashicorp/consul
+
+What is good about using Gossip for discovery:
+
+- You don't have to control a list of host manually
+- You have correct list of healthy hosts dynamically
+- You don't have to using any external database to manage state
+
+* Introduce memberlist package
+
+.link https://github.com/hashicorp/memberlist
+
+memberlist is a Go library that manages cluster membership and member failure detection using a gossip based protocol.
+
+* memberlist package
+
+.code ./code/membership1.go
+
+
+* memberlist package
+
+You could hook for Node Join/Leave event
+
+.code ./code/membership2.go
+
+* Further things we could do
+
+You could broadcast event to all healthy host
+
+- For deploy something
+- For notice about change some metadata
+
+.code ./code/membership3.go
+
+* Let's move to raft
+
+It's consensus algorithm!
+
+.image ./picture/consensus.png 300 850
+
+I'm not going to read academic paper to understand that
+
+* What is our problem again?
+
+Replication
+
+.image ./picture/replication.jpg
+
+Same thing, multiple place
+
+* Replication
+
+.image ./picture/replication2.png 250 1000
+
+* Is that just scp???
+
+.code ./code/scp.go
+
+* It's so easy
+
+.image ./picture/easy.jpeg 500 500
+
+* But we want more
+
+- Live data (replicate EVERY SINGLE REQUEST at REAL TIME)
+- Host health awareness (redirect replicate request to best healthy one)
+- Another failure awareness (network partition, slow timeout..)
+- Consistency Awareness (strong, eventual...)
+
+* RAFT
+
+- Consensus algorithm (again)
+- Consensus in replication problem could be simplified as
+
+Answer those questions CORRECTLY (Is the write success? Is my data safe??)
+
+* RAFT
+
+- Important concept: Finite State Machine (有限オートマトン)
+- Every single CHANGE to our system == State change
+- If every machine has same state == We have same data
+
+.image ./picture/fsm.gif 400 430
+
+* Introduce raft package
+
+.link https://github.com/hashicorp/raft
+
+Raft is a Go library that manages a replicated log and can be used with an FSM to manage replicated state machines. It is a library for providing consensus.
+
+* Problem
+
+Make a simple in memory cache which replicate its data to all nodes
+
+First start with simple one
+.code ./code/cache1.go
+
+* Now make it replicate using RAFT
+
+- hashicorp/raft package provide for us all neccessary interface to hook for replicate data
+.code ./code/raft3.go
+
+* RAFT initialized
+.code ./code/raft2.go
+
+Just need to embed raft object
+
+* RAFT initialized
+.code ./code/raft1.go
+
+* RAFT FSM implement
+
+Unit for "state": op struct
+.code ./code/raft4.go
+
+* RAFT FSM implement
+
+.code ./code/raft5.go
+
+* That's all to make a simple distributed on memory cache!
+
+- hashicorp/raft is so easy to be used with good callback interface
+- Pluggable backend for log store (badger, rocksdb, boltdb...)
+- Some good another implementation: etcd/raft, cloudflare/go-raft)
+
+
+* Summary
+
+- Sorry for talk too much..
+- Distributed system seems hard, but it's easier with golang
+- Distributed system is not a "far away" concept, you should know about it
+- Some good another implementation: etcd/raft, cloudflare/go-raft)
+
+
+* Summary
+
+- Sorry for talk too much..
+- Distributed system seems hard, but it's easier with golang
+- Distributed system is not a "far away" concept, you should know about it
+
+* We're hiring
+
+.link https://linecorp.com/ja/career/position/664
+
