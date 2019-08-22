@@ -1,0 +1,62 @@
+About sync.Pool and what changed in go1.13
+
+Huy Do
+Software Engineer, Observability Team / LINE Corp
+@dxhuy
+
+* Today goal
+- sync.Pool interesting history
+- What changed in sync.Pool from go1.13
+
+
+* Do you know about sync.Pool?
+
+- https://golang.org/pkg/sync/#Pool
+- A Pool is a set of temporary objects that may be individually saved and retrieved.
+
+.code ./code/pool1.go
+
+- An appropriate use of a Pool is to manage a group of temporary items silently shared among and potentially reused by concurrent independent clients of a package. Pool provides a way to amortize allocation overhead across many clients.
+
+* "Appropriate" use
+
+.image ./picture/use1.png 
+
+
+* "Appropriate" use
+
+.image ./picture/use2.png 
+
+
+* "Appropriate" use
+
+.image ./picture/use3.png 
+
+* A little bit of history
+- Proposed at 2013 by @bradfitz
+
+.image ./picture/history1.png
+
+* A little bit of history
+- First implement by @dvyukov
+- First implement is a little more complex
+
+.code ./code/history1.go
+
+* A little bit of history
+
+- Many concerns by @russ 
+- Should users care about Drain?
+- If we're going to have Drain, it should be allowed to be concurrent.
+- Should users care about Capacity?
+- Naming? (Cache vs Pool)
+
+*Finally*
+
+- Minimize into 2 interfaces only (same with current)
+- Users don't have to care about capacity (because GC will care)
+- Users don't have to care about drain (GC will do)
+
+* Implementation
+
+- Very throughout blog by jxck san http://jxck.hatenablog.com/entry/sync.Pool
