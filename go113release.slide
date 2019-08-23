@@ -43,6 +43,7 @@ Software Engineer, Observability Team / LINE Corp
 
 .code ./code/history1.go
 
+
 * A little bit of history
 
 - Many concerns by @russ 
@@ -57,6 +58,126 @@ Software Engineer, Observability Team / LINE Corp
 - Users don't have to care about capacity (because GC will care)
 - Users don't have to care about drain (GC will do)
 
-* Implementation
+.link  https://groups.google.com/forum/#!searchin/golang-dev/pool/golang-dev/QtSIOFsNFrQ/N89_5dZWsdIJ
 
-- Very throughout blog by jxck san http://jxck.hatenablog.com/entry/sync.Pool
+* A little bit of history
+- First accepted version by @bradfitz
+.link https://github.com/golang/go/blob/8c6ef061e3c189e3ac90a451d5680aab9d142618/src/pkg/sync/pool.go github link 
+
+- Very throughout blog http://jxck.hatenablog.com/entry/sync.Pool which explained how it works
+
+
+* A little bit of history
+
+- The idea is simple
+
+.code ./code/history2.go
+
+
+* A little bit of history
+
+- The idea is simple
+- Pool cleanup is supported by run time
+.code ./code/history3.go
+
+* What's wrong
+
+- Mutex every single Put/Get
+- Mutex is expensive
+- Put/Get is very hot path normally (will be called many many times)
+
+* A little bit of history
+
+- Improvement patch by @dvyukov
+.image ./picture/history3.png
+
+
+* A little bit of history
+
+- Idea is ... not simple :(
+.link https://github.com/golang/go/commit/f8e0057bb71cded5bb2d0b09c6292b13c59b5748
+
+- Overall idea: split into "internal pool" and "shared pool"
+- Local pool = per "P" (do you remember about P)
+- Shared pool = global pool, protect by mutex
+- Get path: if local pool exhaust, "steal" from global
+- Put path: if local pool's capacity > threshold, "share" to global 
+- In short: work stealing model
+- Work stealing work by shard slice by hashing parts for each P, and lock for each shard when steal
+
+* How much it improved?
+
+.image ./picture/history4.png
+
+
+* What we learned
+
+- With help from runtime, performance could be improved by rocket speed..
+
+
+* Problem (before 1.13)
+
+- GC problem (spike when GC happen for very big pool)
+- Pool stealing still require some lock
+
+* Now come 1.13 changes!
+
+* 1. Make Pool stealing lock free!!
+
+- sync: use lock-free structure for Pool stealing
+- sync: internal dynamically sized lock-free queue for sync.Pool
+- sync: internal fixed size lock-free queue for sync.Pool
+
+.link https://go-review.googlesource.com/c/go/+/166960
+.link https://go-review.googlesource.com/c/go/+/166957/7
+.link https://go-review.googlesource.com/c/go/+/166958/8
+
+
+* 1. Make Pool stealing lock free!!
+
+- Idea: use lock-free double linked list with atomic CAS 
+- Each processor (P) with push and pop at the head of its queue while the shared access will pop from the tail
+- Note: lock free != contention free (CAS is not free)
+
+
+* 1. Make Pool stealing lock free!!
+
+.image ./picture/history5.png 500 1000
+
+* 2. Make GC less spiky 
+
+- sync: smooth out Pool behavior over GC with a victim cache
+
+.link https://go-review.googlesource.com/c/go/+/166961/10
+
+* 2. Make GC less spiky 
+
+> Currently, every Pool is cleared completely at the start of each GC.
+This is a problem for heavy users of Pool because it causes an
+allocation spike immediately after Pools are clear, which impacts both
+throughput and latency.
+
+- We could make problem better by NOT clear data at once
+
+.image ./picture/gc1.png 300 500
+
+
+* 2. Make GC less spiky 
+
+- Ideas: Split into 2 pools, victim and primary
+.code ./code/gc3.go
+
+
+* 2. Make GC less spiky 
+
+- Why it helped?
+- Each GC, drop victim, and copy primary to victim
+- Result: active objects (frequently be Get) will remain in the heap, and less allocation
+- Interesting: don't have to sacrify Get/Put performance but improve Pool impact when a GC happens
+
+* Finally
+
+- Design process from go team show us how to make good software
+- Go team were obsessed to final simplest interface/solution
+- Run time trick (per P local + work stealing) to improve performance is very interesting
+
