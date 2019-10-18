@@ -79,7 +79,7 @@ huydx
 
 * ざっくりアーキテクチャ
 
-.image ./picture/obs9.png 500 500
+.image ./picture/obs9.png 530 600
 
 * コミュニケーションプロトコルはGrpc
 - Grpcは早くはない（marshal/unmarshal）は遅いとメモリアロケーションが爆発
